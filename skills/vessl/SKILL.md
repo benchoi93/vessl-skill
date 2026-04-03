@@ -45,18 +45,16 @@ tags:
 
 resources:
   cluster: <cluster-name>        # from `vessl cluster list`
-  preset: <resource-preset>      # e.g., gpu-a10-small, gpu-l4-small
+  preset: <resource-preset>      # e.g., gpu-a10-small, gpu-l4-small-spot
 
 image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
 
-volumes:
-  /root/code:
-    import: git://<repo-url>     # clone repo into container
-    ref: main                    # branch/tag/commit
-  /root/data:
-    import: vessl-dataset://<dataset-name>
-  /root/output:
-    export: vessl-artifact://<artifact-name>
+import:
+  /root/code: git://github.com/<org>/<repo>
+  /root/data: vessl-dataset://<org>/<dataset>
+
+export:
+  /root/output: vessl-artifact://<org>/<project>/<artifact>
 
 env:
   WANDB_API_KEY:
@@ -77,34 +75,81 @@ ports:
     port: 6006
 ```
 
-**Full YAML Reference (all fields):**
+**Full YAML example (all features):**
+```yaml
+name: stable-diffusion-finetune
+description: Fine-tune stable diffusion on custom dataset
+tags: ["A100", "finetune"]
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Run name |
-| `description` | string | no | Run description |
-| `tags` | list | no | Filtering tags |
-| `resources.cluster` | string | no | Target cluster (default: VESSL managed) |
-| `resources.preset` | string | yes* | Resource preset name |
-| `resources.node_names` | list | no | Specific node targets |
-| `image` | string/map | yes | Container image URL |
-| `image.url` | string | - | Image URL (if using map form) |
-| `image.credential_name` | string | - | For private registries |
-| `volumes.<path>.import` | string | no | Download source to path (git://, s3://, gs://, vessl-dataset://, vessl-model://, vessl-artifact://) |
-| `volumes.<path>.mount` | string | no | Mount filesystem (vessl-dataset://, hostpath://, nfs://) |
-| `volumes.<path>.export` | string | no | Upload path after run (vessl-artifact://, s3://, gs://) |
-| `volumes.<path>.ref` | string | no | Git ref for git:// imports |
-| `volumes.<path>.readonly` | bool | no | Read-only mount (default: true) |
-| `run[].workdir` | string | no | Working directory |
-| `run[].command` | string | yes | Shell command to execute |
-| `run[].wait` | string | no | Pause after command (e.g., "10s") |
-| `env.<KEY>.value` | string | - | Environment variable value |
-| `env.<KEY>.secret` | bool | - | Mark as secret |
-| `ports[].name` | string | no | Port label |
-| `ports[].type` | string | no | Protocol: http or tcp |
-| `ports[].port` | int | no | Port number |
-| `interactive.max_runtime` | string | no | Max runtime (0=infinite) |
-| `interactive.jupyter.idle_timeout` | string | no | Jupyter idle cutoff |
+resources:
+  cluster: vessl-oci-sanjose
+  preset: gpu-a10-large           # small=1, medium=2, large=4, xlarge=8 GPUs
+  # node_names: ["n01", "n03"]    # optional: pin to specific nodes
+
+image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
+# Private registry:
+# image:
+#   url: my-docker-account/private-repo:tag
+#   credential_name: docker_hub_cred
+
+# --- Import: download into container at start ---
+import:
+  /root/code: git://github.com/org/repo          # shorthand
+  # /root/code:                                    # verbose git import
+  #   git:
+  #     url: https://github.com/org/repo
+  #     ref: c0ffee                                # branch/tag/commit
+  #     credential_name: my-git-cred
+  /root/data: vessl-dataset://<org>/<dataset>
+  /root/model: vessl-model://<org>/<model_repo>/<model_number>
+  /root/s3data: s3://<bucket>/<path>
+  /root/gsdata: gs://<bucket>/<path>
+
+# --- Mount: persistent direct filesystem access ---
+mount:
+  /mnt/dataset: vessl-dataset://<org>/<dataset>
+  /mnt/hostpath: hostpath://<path>
+  /mnt/nfs: nfs://<server>/<path>
+
+# --- Export: upload from container after run ---
+export:
+  /root/output: vessl-artifact://                  # auto-create artifact
+  /root/model-out: vessl-model://<org>/<model_repo>
+  /root/s3out: s3://<bucket>/<prefix>
+
+run:
+  - workdir: /root/code
+    command: pip install -r requirements.txt
+  - wait: 5s
+  - workdir: /root/code
+    command: python train.py --lr=$learning_rate --bs=$batch_size
+
+# --- Interactive mode (Jupyter + SSH, no run commands) ---
+# interactive:
+#   max_runtime: 24h              # 0 = infinite
+#   jupyter:
+#     idle_timeout: 120m
+
+ports:
+  - name: tensorboard
+    type: http
+    port: 6006
+
+env:
+  learning_rate: "0.001"
+  batch_size: "64"
+  postgres_password:
+    value: OUR_DB_PW
+    secret: true
+```
+
+**GPU preset naming convention:**
+- Pattern: `gpu-<type>-<size>[-spot]`
+- Sizes: `small` (1 GPU), `medium` (2), `large` (4), `xlarge` (8)
+- Spot instances: append `-spot` for cost savings (e.g., `gpu-l4-small-spot`)
+- Examples: `gpu-a10-small`, `gpu-a100-large`, `gpu-l4-medium-spot`
+
+**Run status lifecycle:** Pending → Initializing → Running → Stopping → Completed/Failed/Idle/Terminated
 
 ### 3. Monitor a Run
 
@@ -207,12 +252,55 @@ project/
 
 ## Experiment Sweep Integration
 
-For hyperparameter sweeps, use VESSL's built-in sweep:
+VESSL has a built-in hyperparameter sweep engine:
+
 ```bash
-vessl sweep --help    # check sweep CLI
+vessl sweep create \
+  -T maximize -M accuracy -G 0.95 \
+  --num-experiments 20 --num-parallel 4 \
+  -a bayesian \
+  -p learning_rate double space 0.0001 0.01 \
+  -p batch_size int list 32 64 128 \
+  -p dropout categorical list 0.1 0.2 0.3 \
+  -c <cluster> -r <preset> \
+  -i quay.io/vessl-ai/torch:2.3.1-cuda12.1 \
+  -x "python train.py --lr=\$learning_rate --bs=\$batch_size --dropout=\$dropout"
+
+vessl sweep list                    # list sweeps
+vessl sweep read <NAME>             # details
+vessl sweep logs <NAME>             # logs
+vessl sweep best-experiment <NAME>  # winner
+vessl sweep terminate <NAME>        # stop
 ```
 
-Or generate multiple YAML files programmatically and submit in parallel.
+Algorithms: `grid`, `random`, `bayesian`.
+
+Alternatively, generate multiple YAML files and submit in parallel.
+
+## Non-Interactive Auth
+
+For scripts/automation, configure without prompts:
+```bash
+vessl configure -t <ACCESS_TOKEN> -o <ORGANIZATION> -p <PROJECT>
+```
+
+Environment variables (highest priority):
+- `VESSL_ACCESS_TOKEN` — API token
+- `VESSL_DEFAULT_ORGANIZATION` — default org
+- `VESSL_CREDENTIALS_FILE` — path to credentials file
+
+Default credentials stored at `~/.vessl/config`.
+
+## Service Deployment
+
+Deploy models as endpoints:
+```bash
+vessl service create -f serve.yaml -s <service-name>
+vessl service list
+vessl service read --service <NAME> -d
+vessl service scale --service <NAME> --min 1 --max 3 --metric gpu --target 50
+vessl service terminate --service <NAME>
+```
 
 ## Troubleshooting
 
