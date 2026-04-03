@@ -1,0 +1,31 @@
+name: claude-training-run
+description: GPU training run with Claude Code available
+tags:
+  - claude-code
+  - training
+
+resources:
+  cluster: umn-choilab-cluster
+  preset: rtx-6000-1-30cpu-100gbram
+
+image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
+
+env:
+  ANTHROPIC_API_KEY:
+    secret: true
+  CROSSREF_EMAIL:
+    value: "chois@umn.edu"
+
+import:
+  /root/code: git://github.com/<org>/<repo>
+
+export:
+  /root/output: vessl-artifact://
+
+run:
+  - command: |
+      curl -fsSL https://raw.githubusercontent.com/benchoi93/dot-claude/main/setup-claude.sh | bash
+  - workdir: /root/code
+    command: |
+      pip install -r requirements.txt
+      python scripts/train.py --config configs/default.yaml

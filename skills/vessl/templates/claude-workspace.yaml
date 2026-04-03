@@ -1,0 +1,37 @@
+name: claude-workspace
+description: Interactive GPU workspace with Claude Code pre-configured
+tags:
+  - claude-code
+  - workspace
+
+resources:
+  cluster: umn-choilab-cluster
+  preset: rtx-6000-1-30cpu-100gbram
+
+image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
+
+env:
+  ANTHROPIC_API_KEY:
+    secret: true
+  CROSSREF_EMAIL:
+    value: "chois@umn.edu"
+
+import:
+  /root/code: git://github.com/<org>/<repo>
+
+interactive:
+  max_runtime: 24h
+  jupyter:
+    idle_timeout: 120m
+
+ports:
+  - name: jupyter
+    type: http
+    port: 8888
+  - name: tensorboard
+    type: http
+    port: 6006
+
+run:
+  - command: |
+      curl -fsSL https://raw.githubusercontent.com/benchoi93/dot-claude/main/setup-claude.sh | bash

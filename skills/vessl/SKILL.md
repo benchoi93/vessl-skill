@@ -309,6 +309,38 @@ vessl service scale --service <NAME> --min 1 --max 3 --metric gpu --target 50
 vessl service terminate --service <NAME>
 ```
 
+## Claude-Ready Containers
+
+New VESSL containers can auto-bootstrap Claude Code + full config (skills, hooks, MCP servers) with a single init command.
+
+**Bootstrap script** (curl-able):
+```bash
+curl -fsSL https://raw.githubusercontent.com/benchoi93/dot-claude/main/setup-claude.sh | bash
+```
+
+This script is idempotent (safe to re-run) and does:
+1. Installs Claude Code CLI via npm
+2. Clones `benchoi93/dot-claude` to `~/.claude` (all skills, hooks, settings)
+3. Sets up refcheck MCP server (venv + deps)
+4. Generates `.mcp.json` from template
+5. Symlinks VESSL auth if `$HOME != /root`
+6. Validates `ANTHROPIC_API_KEY`
+
+**Required env vars** (set in VESSL YAML with `secret: true`):
+```yaml
+env:
+  ANTHROPIC_API_KEY:
+    secret: true
+  CROSSREF_EMAIL:
+    value: "chois@umn.edu"
+```
+
+**Templates** are in `skills/vessl/templates/`:
+- `claude-workspace.yaml` — interactive GPU workspace with Jupyter + Claude
+- `claude-run.yaml` — training run with Claude available
+
+When the user asks for a "Claude-ready workspace" or "workspace with Claude", use these templates as the base and customize the `import`, `run`, and `preset` fields.
+
 ## Troubleshooting
 
 | Issue | Fix |
