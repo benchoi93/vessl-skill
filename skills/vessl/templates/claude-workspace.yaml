@@ -11,7 +11,7 @@ resources:
 image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
 
 env:
-  ANTHROPIC_API_KEY:
+  CLAUDE_OAUTH_CREDENTIALS:
     secret: true
   GITHUB_TOKEN:
     secret: true
