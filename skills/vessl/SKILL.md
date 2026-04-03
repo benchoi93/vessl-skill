@@ -313,14 +313,18 @@ vessl service terminate --service <NAME>
 
 New VESSL containers can auto-bootstrap Claude Code + full config (skills, hooks, MCP servers) with a single init command.
 
-**Bootstrap script** (curl-able):
-```bash
-curl -fsSL https://raw.githubusercontent.com/benchoi93/dot-claude/main/setup-claude.sh | bash
+**Bootstrap** — the `setup-claude.sh` script lives in the `dot-claude` repo (private). Since it's private, the VESSL run must clone the repo using a GitHub token, then run the script:
+
+```yaml
+run:
+  - command: |
+      git clone https://${GITHUB_TOKEN}@github.com/benchoi93/dot-claude.git ~/.claude
+      bash ~/.claude/setup-claude.sh
 ```
 
-This script is idempotent (safe to re-run) and does:
+The script is idempotent (safe to re-run) and does:
 1. Installs Claude Code CLI via npm
-2. Clones `benchoi93/dot-claude` to `~/.claude` (all skills, hooks, settings)
+2. Pulls latest `dot-claude` if already cloned (all skills, hooks, settings)
 3. Sets up refcheck MCP server (venv + deps)
 4. Generates `.mcp.json` from template
 5. Symlinks VESSL auth if `$HOME != /root`
@@ -331,9 +335,15 @@ This script is idempotent (safe to re-run) and does:
 env:
   ANTHROPIC_API_KEY:
     secret: true
+  GITHUB_TOKEN:
+    secret: true
   CROSSREF_EMAIL:
     value: "chois@umn.edu"
 ```
+
+- `ANTHROPIC_API_KEY`: Claude Code reads this from environment — no interactive login needed
+- `GITHUB_TOKEN`: GitHub personal access token for cloning private `dot-claude` repo
+- `CROSSREF_EMAIL`: For the refcheck MCP server (optional)
 
 **Templates** are in `skills/vessl/templates/`:
 - `claude-workspace.yaml` — interactive GPU workspace with Jupyter + Claude
