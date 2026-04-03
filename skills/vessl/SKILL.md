@@ -44,8 +44,8 @@ tags:
   - <project-tag>
 
 resources:
-  cluster: <cluster-name>        # from `vessl cluster list`
-  preset: <resource-preset>      # e.g., gpu-a10-small, gpu-l4-small-spot
+  cluster: umn-choilab-cluster   # ALWAYS use this cluster
+  preset: rtx-6000-1-30cpu-100gbram   # see preset table below
 
 image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
 
@@ -82,8 +82,8 @@ description: Fine-tune stable diffusion on custom dataset
 tags: ["A100", "finetune"]
 
 resources:
-  cluster: vessl-oci-sanjose
-  preset: gpu-a10-large           # small=1, medium=2, large=4, xlarge=8 GPUs
+  cluster: umn-choilab-cluster    # ALWAYS use this cluster
+  preset: rtx-6000-2-60cpu-200gbram   # see preset table below
   # node_names: ["n01", "n03"]    # optional: pin to specific nodes
 
 image: quay.io/vessl-ai/torch:2.3.1-cuda12.1
@@ -143,11 +143,18 @@ env:
     secret: true
 ```
 
-**GPU preset naming convention:**
-- Pattern: `gpu-<type>-<size>[-spot]`
-- Sizes: `small` (1 GPU), `medium` (2), `large` (4), `xlarge` (8)
-- Spot instances: append `-spot` for cost savings (e.g., `gpu-l4-small-spot`)
-- Examples: `gpu-a10-small`, `gpu-a100-large`, `gpu-l4-medium-spot`
+**Available resource presets on `umn-choilab-cluster`:**
+
+| Preset | Processor | GPU | CPU | Memory |
+|--------|-----------|-----|-----|--------|
+| `cpu-2core-4gbram` | CPU | — | 2 | 4 Gi |
+| `cpu-4core-8gbram` | CPU | — | 4 | 8 Gi |
+| `rtx-6000-1-30cpu-100gbram` | GPU | 1x RTX 6000 Ada | 30 | 100 Gi |
+| `rtx-6000-2-60cpu-200gbram` | GPU | 2x RTX 6000 Ada | 60 | 200 Gi |
+| `rtx-6000-3-90cpu-300gbram` | GPU | 3x RTX 6000 Ada | 90 | 300 Gi |
+| `rtx-6000-4-120cpu-400gbram` | GPU | 4x RTX 6000 Ada | 120 | 400 Gi |
+
+Default for training: `rtx-6000-1-30cpu-100gbram`. Use multi-GPU presets for distributed training or large models.
 
 **Run status lifecycle:** Pending → Initializing → Running → Stopping → Completed/Failed/Idle/Terminated
 
